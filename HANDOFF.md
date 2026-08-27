@@ -61,6 +61,16 @@ node scripts/notify-line.mjs --spec /tmp/oki_card.json --dry   # 送信せず内
 1枚のときは carousel にせず単票にする。**このリポジトリの2本は今のところ単票のみ**だが、
 描画層は ai-katsuyo-lab と同一内容にしてある（ズレたら設計書が正）。
 
+**カルーセルはヘッダの高さを固定する（2026-08-27）。** 実機で3枚並べたところ、
+subtitle が長いカード（`Anthropic (Claude Code Changelog)` 32文字）だけタイトルが3行に折り返し、
+**ヘッダの高さが揃わなかった**。カルーセルはカードごとの高さを揃えてくれない。対策は2つ入れてある:
+
+- `size === 'kilo'`（カルーセル）のときヘッダ box に `height: '62px'` を付ける。単票（mega）は付けない
+- ヘッダの文字数を機械的に詰める（`FLEX_LIMITS.headerTitle: 24` / `headerSubtitle: 14`）
+
+**呼び出し側にも「subtitle は短く」を書くこと。** 詰めた表示（`Anthropic (Cl…`）は読みづらいので、
+機械的な詰めは最後の砦であって、本来は短い名前を渡す。
+
 **URL はボタン（`actions`）にする。最大3つ。**
 2026-08-27 に実機のカードを見て分かったこと: **Flex Message は本文中の URL をリンクにしない。**
 `text` に「出典: example.com」と書いてもタップできない文字列が並ぶだけだった。
@@ -94,8 +104,8 @@ status はヘッダの色。**推測させない**ため、各プロンプトに
 `node --test scripts/notify-line.test.mjs`:
 
 ```
-ℹ tests 28
-ℹ pass 28
+ℹ tests 31
+ℹ pass 31
 ℹ fail 0
 ```
 
