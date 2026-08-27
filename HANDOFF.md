@@ -56,6 +56,11 @@ node scripts/notify-line.mjs --spec /tmp/oki_card.json --dry   # 送信せず内
 スクリプトが、空 text の除去 → Flex 変換 → 送信前検証 → 失敗時の `altText` テキストへの
 フォールバックまで行う。**見た目より通知を失わないことを優先する**（設計書5節）。
 
+**複数カード（carousel）にも対応した（2026-08-27）。** カード仕様の配列を
+`{ "altText": "...", "cards": [ … ] }` の形で渡すと横スクロールのカルーセルになる。上限10枚。
+1枚のときは carousel にせず単票にする。**このリポジトリの2本は今のところ単票のみ**だが、
+描画層は ai-katsuyo-lab と同一内容にしてある（ズレたら設計書が正）。
+
 **URL はボタン（`actions`）にする。最大3つ。**
 2026-08-27 に実機のカードを見て分かったこと: **Flex Message は本文中の URL をリンクにしない。**
 `text` に「出典: example.com」と書いてもタップできない文字列が並ぶだけだった。
@@ -89,8 +94,8 @@ status はヘッダの色。**推測させない**ため、各プロンプトに
 `node --test scripts/notify-line.test.mjs`:
 
 ```
-ℹ tests 21
-ℹ pass 21
+ℹ tests 28
+ℹ pass 28
 ℹ fail 0
 ```
 
