@@ -27,7 +27,7 @@ export const FLEX_INK = {
 };
 
 // LINE の公称上限そのものではなく、安全側に取ったガード
-export const FLEX_LIMITS = { altText: 400, buttonLabel: 20, json: 20000 };
+export const FLEX_LIMITS = { altText: 400, buttonLabel: 20, json: 20000, actions: 3 };
 
 function deltaColor(dir) {
   if (dir === 'up') return FLEX_INK.up;
@@ -163,6 +163,18 @@ function renderBlock(block) {
   }
 }
 
+/**
+ * spec.action（単数）と spec.actions（複数）を1本のリストにまとめる。
+ * 上限を超えた分は捨てる。ボタンが並びすぎるとカードが読みにくくなるため。
+ */
+export function collectActions(spec) {
+  const all = [
+    ...(spec.action?.uri ? [spec.action] : []),
+    ...(Array.isArray(spec.actions) ? spec.actions.filter((a) => a?.uri) : []),
+  ];
+  return all.slice(0, FLEX_LIMITS.actions);
+}
+
 /** カード仕様 → { altText, contents } */
 export function buildFlexCard(spec) {
   const color = FLEX_STATUS_COLOR[spec.status] ?? FLEX_STATUS_COLOR.neutral;
@@ -211,24 +223,26 @@ export function buildFlexCard(spec) {
     bubble.body = { type: 'box', layout: 'vertical', paddingAll: '14px', contents: blocks };
   }
 
-  if (spec.action?.uri) {
+  // action（単数）と actions（複数）の両方を受ける。
+  // Flex の text は URL をリンクにしないので、本文にURLを書いてもタップできない。
+  // 複数の行き先があるならボタンにする（設計書 3節の拡張）。
+  const links = collectActions(spec);
+  if (links.length > 0) {
     bubble.footer = {
       type: 'box',
       layout: 'vertical',
       paddingAll: '6px',
-      contents: [
-        {
-          type: 'button',
-          style: 'link',
-          height: 'sm',
-          color,
-          action: {
-            type: 'uri',
-            label: clip(spec.action.label || '開く', FLEX_LIMITS.buttonLabel),
-            uri: spec.action.uri,
-          },
+      contents: links.map((a) => ({
+        type: 'button',
+        style: 'link',
+        height: 'sm',
+        color,
+        action: {
+          type: 'uri',
+          label: clip(a.label || '開く', FLEX_LIMITS.buttonLabel),
+          uri: a.uri,
         },
-      ],
+      })),
     };
   }
 
@@ -324,6 +338,10 @@ export function cardToPlainText(spec) {
         throw new Error(`未知のブロック種別: ${block.kind}`);
     }
   }
-  if (spec.action?.uri) out.push('', spec.action.uri);
+  const links = collectActions(spec);
+  if (links.length > 0) {
+    out.push('');
+    for (const a of links) out.push(a.label ? `${a.label}: ${a.uri}` : a.uri);
+  }
   return out.join('\n');
 }

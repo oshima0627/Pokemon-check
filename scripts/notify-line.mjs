@@ -23,8 +23,14 @@
  *       { "kind": "separator" },
  *       { "kind": "bullets", "items": ["メールアドレスの一致を確認"] }
  *     ],
- *     "action": { "label": "POL を開く", "uri": "https://..." }
+ *     "actions": [
+ *       { "label": "POL を開く",   "uri": "https://..." },
+ *       { "label": "ゲオの告知",   "uri": "https://..." }
+ *     ]
  *   }
+ *
+ * ボタンは最大3個（FLEX_LIMITS.actions）。1個だけなら "action" でもよい。
+ * **Flex Message は本文中のURLをリンクにしない。** タップさせたいURLはボタンにすること。
  *
  * status は info | success | warn | error | neutral。
  * **実態に合わせて渡すこと。** 締切が迫っている/受付中なら warn、
@@ -36,7 +42,14 @@
  *   NEXEED_LINE_USER_ID
  */
 import { readFileSync } from 'node:fs';
-import { buildFlexCard, capItems, cardToPlainText, clip, validateFlexPayload } from './flex.mjs';
+import {
+  FLEX_LIMITS,
+  buildFlexCard,
+  capItems,
+  cardToPlainText,
+  clip,
+  validateFlexPayload,
+} from './flex.mjs';
 
 const VALID_STATUS = ['success', 'info', 'warn', 'error', 'neutral'];
 const VALID_KINDS = ['heading', 'title', 'text', 'quote', 'rows', 'bullets', 'separator'];
@@ -132,10 +145,20 @@ export function normalizeSpec(raw) {
   // 末尾の separator は線だけが浮くので落とす
   while (blocks.length > 0 && blocks[blocks.length - 1].kind === 'separator') blocks.pop();
 
-  const action =
-    raw.action && isNonEmpty(raw.action.uri)
-      ? { label: isNonEmpty(raw.action.label) ? raw.action.label : '開く', uri: raw.action.uri }
-      : null;
+  // ボタンは action（単数）と actions（複数）のどちらでも渡せる。
+  // 本文にURLを書いてもFlexではタップできないので、行き先が複数あるなら actions を使う。
+  const rawActions = [
+    ...(raw.action ? [raw.action] : []),
+    ...(Array.isArray(raw.actions) ? raw.actions : []),
+  ].filter((a) => a && isNonEmpty(a.uri));
+  if (rawActions.length > FLEX_LIMITS.actions) {
+    warnings.push(
+      `ボタンが ${rawActions.length} 個あるので先頭 ${FLEX_LIMITS.actions} 個だけ残しました`,
+    );
+  }
+  const actions = rawActions
+    .slice(0, FLEX_LIMITS.actions)
+    .map((a) => ({ label: isNonEmpty(a.label) ? a.label.trim() : '開く', uri: a.uri.trim() }));
 
   const spec = {
     status,
@@ -143,7 +166,7 @@ export function normalizeSpec(raw) {
     subtitle: isNonEmpty(raw.subtitle) ? raw.subtitle.trim() : undefined,
     altText: clip(isNonEmpty(raw.altText) ? raw.altText.trim() : raw.title.trim(), 400),
     blocks,
-    action,
+    actions,
   };
   return { spec, warnings };
 }

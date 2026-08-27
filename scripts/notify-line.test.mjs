@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildFlexCard, cardToPlainText, validateFlexPayload } from './flex.mjs';
+import { FLEX_LIMITS, buildFlexCard, cardToPlainText, validateFlexPayload } from './flex.mjs';
 import { normalizeSpec, parseArgs } from './notify-line.mjs';
 
 /** 実際にルーティンが書くのと同じ形のカード仕様 */
@@ -28,7 +28,10 @@ function samplePokemonSpec() {
       { kind: 'heading', text: 'アプリで確認（自動確認できません）' },
       { kind: 'bullets', items: ['サンエーアプリ', 'iAEONアプリ'] },
     ],
-    action: { label: 'ゲオの告知を開く', uri: 'https://geo-online.co.jp/news/779' },
+    actions: [
+      { label: 'ゲオの告知', uri: 'https://geo-online.co.jp/news/779' },
+      { label: 'ゲオ 再販の告知', uri: 'https://geo-online.co.jp/news/781' },
+    ],
   };
 }
 
@@ -102,12 +105,53 @@ test('末尾の separator は落とす（線だけが浮くため）', () => {
   assert.deepEqual(spec.blocks.map((b) => b.kind), ['text']);
 });
 
-test('uri の無い action は落とし、label の無い action は「開く」になる', () => {
-  assert.equal(normalizeSpec({ title: 'x', action: { label: 'a' } }).spec.action, null);
+test('uri の無いボタンは落とし、label の無いボタンは「開く」になる', () => {
+  assert.deepEqual(normalizeSpec({ title: 'x', action: { label: 'a' } }).spec.actions, []);
   assert.equal(
-    normalizeSpec({ title: 'x', action: { uri: 'https://example.com' } }).spec.action.label,
+    normalizeSpec({ title: 'x', action: { uri: 'https://example.com' } }).spec.actions[0].label,
     '開く',
   );
+});
+
+test('action（単数）と actions（複数）は1本にまとまる', () => {
+  const { spec } = normalizeSpec({
+    title: 'x',
+    action: { label: '1つめ', uri: 'https://a.example' },
+    actions: [{ label: '2つめ', uri: 'https://b.example' }],
+  });
+  assert.deepEqual(spec.actions.map((a) => a.label), ['1つめ', '2つめ']);
+});
+
+test('ボタンは3個で打ち切り、打ち切ったことを警告に残す', () => {
+  const actions = Array.from({ length: 5 }, (_, i) => ({
+    label: `L${i}`,
+    uri: `https://e${i}.example`,
+  }));
+  const { spec, warnings } = normalizeSpec({ title: 'x', actions });
+  assert.equal(spec.actions.length, FLEX_LIMITS.actions);
+  assert.match(warnings[0], /先頭 3 個だけ残しました/);
+});
+
+test('ボタンが複数あると footer にボタンが複数並ぶ', () => {
+  const { spec } = normalizeSpec(samplePokemonSpec());
+  const card = buildFlexCard(spec);
+  const buttons = card.contents.footer.contents;
+  assert.equal(buttons.length, 2);
+  assert.equal(buttons[0].action.uri, 'https://geo-online.co.jp/news/779');
+  assert.equal(buttons[1].action.uri, 'https://geo-online.co.jp/news/781');
+  assert.deepEqual(validateFlexPayload(card), []);
+});
+
+test('長いボタン label は20文字に切られる（検証は通る）', () => {
+  const { spec } = normalizeSpec({
+    title: 'x',
+    blocks: [{ kind: 'text', text: 'a' }],
+    actions: [{ label: 'あ'.repeat(30), uri: 'https://example.com' }],
+  });
+  // 描画層が20文字に切るので、検証は通る（label は切られている）
+  const card = buildFlexCard(spec);
+  assert.equal(card.contents.footer.contents[0].action.label.length, 20);
+  assert.deepEqual(validateFlexPayload(card), []);
 });
 
 test('altText を省略すると title を使い、400 文字で切る', () => {
@@ -146,6 +190,8 @@ test('フォールバック本文にカードの中身が残る', () => {
   assert.match(plain, /応募: 8\/31 11:00〜9\/3 17:59/);
   assert.match(plain, /・サンエーアプリ/);
   assert.match(plain, /geo-online\.co\.jp\/news\/779/);
+  // ボタンが複数あっても、フォールバック本文にはすべてのURLが残る
+  assert.match(plain, /geo-online\.co\.jp\/news\/781/);
 });
 
 test('長すぎる本文は JSON サイズの検証で弾かれる（フォールバックへ回す）', () => {
