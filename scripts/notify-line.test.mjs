@@ -183,6 +183,40 @@ test('cards が2枚以上なら carousel になる', () => {
   assert.deepEqual(validateFlexPayload(card), []);
 });
 
+test('カルーセルはヘッダの高さを固定して頭を揃える', () => {
+  const { specs, altText } = normalizeInput({
+    cards: [
+      { title: 'AI Daily #1', subtitle: 'the-decoder.com', blocks: [{ kind: 'text', text: 'a' }] },
+      {
+        title: 'AI Daily #2',
+        subtitle: 'Anthropic (Claude Code Changelog)', // 長すぎる実例
+        blocks: [{ kind: 'text', text: 'b' }],
+      },
+    ],
+  });
+  const card = buildFlexCarousel(specs, altText);
+  const headers = card.contents.contents.map((b) => b.header);
+  assert.deepEqual(new Set(headers.map((h) => h.height)), new Set(['62px']));
+  // 長い subtitle は詰める。詰めないと title の幅を奪って3行に折り返す
+  const sub2 = headers[1].contents.at(-1).text;
+  assert.equal(sub2.length, FLEX_LIMITS.headerSubtitle);
+  assert.ok(sub2.endsWith('…'));
+  assert.deepEqual(validateFlexPayload(card), []);
+});
+
+test('単票のヘッダは高さを固定しない（1枚しか出ないので揃える相手がいない）', () => {
+  const card = buildFlexCard(normalizeSpec(samplePokemonSpec()).spec);
+  assert.equal(card.contents.header.height, undefined);
+});
+
+test('長すぎる title はヘッダで詰められる', () => {
+  const { spec } = normalizeSpec({ title: 'あ'.repeat(40), blocks: [{ kind: 'text', text: 'a' }] });
+  const card = buildFlexCard(spec);
+  const title = card.contents.header.contents[0].text;
+  assert.equal(title.length, FLEX_LIMITS.headerTitle);
+  assert.ok(title.endsWith('…'));
+});
+
 test('cards が1枚のときは carousel にせず単票にする', () => {
   const { specs, altText } = normalizeInput({
     cards: [{ status: 'info', title: 'ひとつだけ', blocks: [{ kind: 'text', text: 'a' }] }],

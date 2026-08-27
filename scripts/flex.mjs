@@ -27,7 +27,20 @@ export const FLEX_INK = {
 };
 
 // LINE の公称上限そのものではなく、安全側に取ったガード
-export const FLEX_LIMITS = { altText: 400, buttonLabel: 20, json: 20000, actions: 3, cards: 10 };
+export const FLEX_LIMITS = {
+  altText: 400,
+  buttonLabel: 20,
+  json: 20000,
+  actions: 3,
+  cards: 10,
+  // ヘッダの文字数。kilo（幅の狭いカルーセル）でも2行に収まる長さにしてある。
+  // ここを緩めるとヘッダが3行になり、カルーセルで高さが揃わなくなる
+  headerTitle: 24,
+  headerSubtitle: 14,
+};
+
+/** カルーセルのヘッダ高さ。title が2行になっても収まる値 */
+export const FLEX_HEADER_HEIGHT = '62px';
 
 function deltaColor(dir) {
   if (dir === 'up') return FLEX_INK.up;
@@ -182,10 +195,13 @@ export function collectActions(spec) {
 export function buildFlexBubble(spec, size = 'mega') {
   const color = FLEX_STATUS_COLOR[spec.status] ?? FLEX_STATUS_COLOR.neutral;
 
+  // ヘッダは長さを機械的に詰める。
+  // subtitle は flex:0 で自分の幅を取るので、長いと title の幅を奪って
+  // title が3行に折り返し、カルーセルでカードごとにヘッダの高さがバラつく。
   const header = [
     {
       type: 'text',
-      text: String(spec.title),
+      text: clip(String(spec.title), FLEX_LIMITS.headerTitle),
       color: '#FFFFFF',
       weight: 'bold',
       size: 'sm',
@@ -196,7 +212,7 @@ export function buildFlexBubble(spec, size = 'mega') {
   if (spec.subtitle) {
     header.push({
       type: 'text',
-      text: String(spec.subtitle),
+      text: clip(String(spec.subtitle), FLEX_LIMITS.headerSubtitle),
       color: '#FFFFFF',
       size: 'xs',
       align: 'end',
@@ -218,6 +234,9 @@ export function buildFlexBubble(spec, size = 'mega') {
       paddingAll: '12px',
       spacing: 'sm',
       contents: header,
+      // カルーセルは高さを揃えてくれないので、ヘッダの高さを固定して
+      // カードの頭を横一線に揃える。単票は1枚しか出ないので自然な高さのまま。
+      ...(size === 'kilo' ? { height: FLEX_HEADER_HEIGHT } : {}),
     },
   };
   // 中身が無いときは body 自体を出さない。「内容なし」のような
