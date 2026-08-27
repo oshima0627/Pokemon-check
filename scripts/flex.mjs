@@ -27,7 +27,7 @@ export const FLEX_INK = {
 };
 
 // LINE の公称上限そのものではなく、安全側に取ったガード
-export const FLEX_LIMITS = { altText: 400, buttonLabel: 20, json: 20000, actions: 3 };
+export const FLEX_LIMITS = { altText: 400, buttonLabel: 20, json: 20000, actions: 3, cards: 10 };
 
 function deltaColor(dir) {
   if (dir === 'up') return FLEX_INK.up;
@@ -175,8 +175,11 @@ export function collectActions(spec) {
   return all.slice(0, FLEX_LIMITS.actions);
 }
 
-/** カード仕様 → { altText, contents } */
-export function buildFlexCard(spec) {
+/**
+ * カード仕様1件 → bubble ノード。
+ * size は単票なら 'mega'（本文幅いっぱい）、カルーセルなら 'kilo'（横に並ぶので細く）。
+ */
+export function buildFlexBubble(spec, size = 'mega') {
   const color = FLEX_STATUS_COLOR[spec.status] ?? FLEX_STATUS_COLOR.neutral;
 
   const header = [
@@ -207,7 +210,7 @@ export function buildFlexCard(spec) {
 
   const bubble = {
     type: 'bubble',
-    size: 'mega',
+    size,
     header: {
       type: 'box',
       layout: 'horizontal',
@@ -246,7 +249,34 @@ export function buildFlexCard(spec) {
     };
   }
 
-  return { altText: clip(spec.altText || spec.title, FLEX_LIMITS.altText), contents: bubble };
+  return bubble;
+}
+
+/** カード仕様 → { altText, contents }（1枚） */
+export function buildFlexCard(spec) {
+  return {
+    altText: clip(spec.altText || spec.title, FLEX_LIMITS.altText),
+    contents: buildFlexBubble(spec, 'mega'),
+  };
+}
+
+/**
+ * カード仕様の配列 → カルーセル（横スクロールで複数枚）。
+ *
+ * 1件のときは carousel にせず単票にする。カードが1枚しかないのに
+ * 横スクロールの見た目にすると、隣に何かあると誤解させるため。
+ * altText は呼び出し側が全体を要約して渡す（各カードの altText は使わない）。
+ */
+export function buildFlexCarousel(specs, altText) {
+  const list = (specs ?? []).filter(Boolean).slice(0, FLEX_LIMITS.cards);
+  if (list.length === 0) throw new Error('カードが1枚もありません');
+  if (list.length === 1) {
+    return { altText: clip(altText || list[0].altText || list[0].title, FLEX_LIMITS.altText), contents: buildFlexBubble(list[0], 'mega') };
+  }
+  return {
+    altText: clip(altText || list.map((s) => s.title).join(' / '), FLEX_LIMITS.altText),
+    contents: { type: 'carousel', contents: list.map((s) => buildFlexBubble(s, 'kilo')) },
+  };
 }
 
 // bubble は contents ではなく header / hero / body / footer に子を持つ
@@ -276,8 +306,16 @@ export function validateFlexPayload(payload) {
     problems.push(`altText が ${FLEX_LIMITS.altText} 文字を超えている (${alt.length})`);
   }
 
-  if (payload.contents?.type !== 'bubble') {
-    problems.push('contents が bubble ではない');
+  const root = payload.contents;
+  if (root?.type === 'carousel') {
+    const cards = Array.isArray(root.contents) ? root.contents : [];
+    if (cards.length === 0) problems.push('carousel にカードが無い');
+    if (cards.length > FLEX_LIMITS.cards) {
+      problems.push(`carousel のカードが ${FLEX_LIMITS.cards} 枚を超えている (${cards.length})`);
+    }
+    if (cards.some((c) => c?.type !== 'bubble')) problems.push('carousel の中身が bubble ではない');
+  } else if (root?.type !== 'bubble') {
+    problems.push('contents が bubble でも carousel でもない');
     return problems;
   }
 
@@ -300,6 +338,13 @@ export function validateFlexPayload(payload) {
   }
 
   return problems;
+}
+
+/** 複数カードをプレーンテキストに落とす。カード間は空行と区切りで分ける */
+export function cardsToPlainText(specs, altText) {
+  const list = (specs ?? []).filter(Boolean);
+  const head = altText ? [altText, ''] : [];
+  return [...head, ...list.map(cardToPlainText)].join('\n----------\n');
 }
 
 /**

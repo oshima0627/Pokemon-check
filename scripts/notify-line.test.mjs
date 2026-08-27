@@ -1,8 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { FLEX_LIMITS, buildFlexCard, cardToPlainText, validateFlexPayload } from './flex.mjs';
-import { normalizeSpec, parseArgs } from './notify-line.mjs';
+import {
+  FLEX_LIMITS,
+  buildFlexCard,
+  buildFlexCarousel,
+  cardToPlainText,
+  cardsToPlainText,
+  validateFlexPayload,
+} from './flex.mjs';
+import { normalizeInput, normalizeSpec, parseArgs } from './notify-line.mjs';
 
 /** 実際にルーティンが書くのと同じ形のカード仕様 */
 function samplePokemonSpec() {
@@ -152,6 +159,80 @@ test('長いボタン label は20文字に切られる（検証は通る）', ()
   const card = buildFlexCard(spec);
   assert.equal(card.contents.footer.contents[0].action.label.length, 20);
   assert.deepEqual(validateFlexPayload(card), []);
+});
+
+test('cards が無ければ1枚として扱う', () => {
+  const { specs, altText } = normalizeInput(samplePokemonSpec());
+  assert.equal(specs.length, 1);
+  assert.match(altText, /ゲオ抽選/);
+});
+
+test('cards が2枚以上なら carousel になる', () => {
+  const { specs, altText } = normalizeInput({
+    altText: 'AI日次ブリーフ 3件',
+    cards: [
+      { status: 'info', title: 'ニュース1', blocks: [{ kind: 'text', text: 'a' }] },
+      { status: 'info', title: 'ニュース2', blocks: [{ kind: 'text', text: 'b' }] },
+    ],
+  });
+  const card = buildFlexCarousel(specs, altText);
+  assert.equal(card.contents.type, 'carousel');
+  assert.equal(card.contents.contents.length, 2);
+  assert.equal(card.contents.contents[0].size, 'kilo'); // 横に並ぶので細くする
+  assert.equal(card.altText, 'AI日次ブリーフ 3件');
+  assert.deepEqual(validateFlexPayload(card), []);
+});
+
+test('cards が1枚のときは carousel にせず単票にする', () => {
+  const { specs, altText } = normalizeInput({
+    cards: [{ status: 'info', title: 'ひとつだけ', blocks: [{ kind: 'text', text: 'a' }] }],
+  });
+  const card = buildFlexCarousel(specs, altText);
+  assert.equal(card.contents.type, 'bubble');
+  assert.equal(card.contents.size, 'mega');
+});
+
+test('壊れたカードは落とし、残りは送る', () => {
+  const { specs, warnings } = normalizeInput({
+    cards: [
+      { status: 'info', title: 'ok', blocks: [{ kind: 'text', text: 'a' }] },
+      { status: 'info', blocks: [] }, // title 無し
+    ],
+  });
+  assert.equal(specs.length, 1);
+  assert.match(warnings[0], /カード2 を落としました/);
+});
+
+test('有効なカードが1枚も無ければ失敗する', () => {
+  assert.throws(
+    () => normalizeInput({ cards: [{ status: 'info' }] }),
+    /有効なカードが1枚もありません/,
+  );
+});
+
+test('カードは10枚で打ち切る', () => {
+  const cards = Array.from({ length: 12 }, (_, i) => ({
+    title: `T${i}`,
+    blocks: [{ kind: 'text', text: 'a' }],
+  }));
+  const { specs, warnings } = normalizeInput({ cards });
+  assert.equal(specs.length, FLEX_LIMITS.cards);
+  assert.match(warnings[0], /先頭 10 枚だけ残しました/);
+});
+
+test('複数カードのフォールバック本文に全カードが残る', () => {
+  const { specs, altText } = normalizeInput({
+    altText: '見出し',
+    cards: [
+      { title: 'ニュース1', blocks: [{ kind: 'text', text: '本文1' }] },
+      { title: 'ニュース2', blocks: [{ kind: 'text', text: '本文2' }] },
+    ],
+  });
+  const plain = cardsToPlainText(specs, altText);
+  assert.match(plain, /見出し/);
+  assert.match(plain, /本文1/);
+  assert.match(plain, /本文2/);
+  assert.match(plain, /----------/);
 });
 
 test('altText を省略すると title を使い、400 文字で切る', () => {

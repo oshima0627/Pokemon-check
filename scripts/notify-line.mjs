@@ -44,9 +44,9 @@
 import { readFileSync } from 'node:fs';
 import {
   FLEX_LIMITS,
-  buildFlexCard,
+  buildFlexCarousel,
   capItems,
-  cardToPlainText,
+  cardsToPlainText,
   clip,
   validateFlexPayload,
 } from './flex.mjs';
@@ -171,6 +171,46 @@ export function normalizeSpec(raw) {
   return { spec, warnings };
 }
 
+/**
+ * 仕様ファイルを「カードの配列＋全体の altText」に正規化する。
+ *
+ * 1枚だけのときは今までどおりカード仕様そのものを、
+ * 複数枚のときは `{ altText, cards: [...] }` を受ける。呼び出し側はどちらでも書ける。
+ */
+export function normalizeInput(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    throw new Error('カード仕様がオブジェクトではありません');
+  }
+  if (!Array.isArray(raw.cards)) {
+    const { spec, warnings } = normalizeSpec(raw);
+    return { specs: [spec], altText: spec.altText, warnings };
+  }
+
+  const warnings = [];
+  if (raw.cards.length === 0) throw new Error('cards が空です');
+  if (raw.cards.length > FLEX_LIMITS.cards) {
+    warnings.push(`カードが ${raw.cards.length} 枚あるので先頭 ${FLEX_LIMITS.cards} 枚だけ残しました`);
+  }
+  const specs = [];
+  for (const [i, card] of raw.cards.slice(0, FLEX_LIMITS.cards).entries()) {
+    try {
+      const r = normalizeSpec(card);
+      specs.push(r.spec);
+      warnings.push(...r.warnings.map((w) => `カード${i + 1}: ${w}`));
+    } catch (e) {
+      // 1枚が壊れても残りは送る。落としたことは必ず残す
+      warnings.push(`カード${i + 1} を落としました: ${e.message}`);
+    }
+  }
+  if (specs.length === 0) throw new Error('有効なカードが1枚もありません');
+
+  const altText = clip(
+    isNonEmpty(raw.altText) ? raw.altText.trim() : specs.map((s) => s.title).join(' / '),
+    400,
+  );
+  return { specs, altText, warnings };
+}
+
 async function push(message) {
   const token = process.env.NEXEED_LINE_CHANNEL_ACCESS_TOKEN;
   const to = process.env.NEXEED_LINE_USER_ID;
@@ -196,14 +236,14 @@ async function main() {
     throw new Error(`カード仕様を読めません (${args.spec}): ${e.message}`);
   }
 
-  const { spec, warnings } = normalizeSpec(raw);
+  const { specs, altText, warnings } = normalizeInput(raw);
   for (const w of warnings) console.error(`⚠ ${w}`);
 
-  const plain = cardToPlainText(spec);
+  const plain = cardsToPlainText(specs, specs.length > 1 ? altText : '');
   let card;
   let problems;
   try {
-    card = buildFlexCard(spec);
+    card = buildFlexCarousel(specs, altText);
     problems = validateFlexPayload(card);
   } catch (e) {
     // 組み立てで落ちても通知そのものを消さない
