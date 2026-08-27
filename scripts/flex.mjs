@@ -343,8 +343,8 @@ export function validateFlexPayload(payload) {
 /** 複数カードをプレーンテキストに落とす。カード間は空行と区切りで分ける */
 export function cardsToPlainText(specs, altText) {
   const list = (specs ?? []).filter(Boolean);
-  const head = altText ? [altText, ''] : [];
-  return [...head, ...list.map(cardToPlainText)].join('\n----------\n');
+  const body = list.map(cardToPlainText).join('\n----------\n');
+  return altText ? `${altText}\n\n${body}` : body;
 }
 
 /**
