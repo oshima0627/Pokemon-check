@@ -195,7 +195,23 @@ async function fetchViaJina(url, timeoutMs) {
     headers: { 'User-Agent': BOT_UA, Accept: 'text/plain,*/*' },
   });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return { body: await res.text(), status: res.status, kind: 'text' };
+  const body = await res.text();
+  const blocked = jinaBlockedReason(body);
+  if (blocked) throw new Error(blocked);
+  return { body, status: res.status, kind: 'text' };
+}
+
+/**
+ * r.jina.ai は相手に拒否されても自分は 200 を返し、本文の先頭に Warning 行を付ける
+ * （2026-10-04 実測：ヨドバシ=403 Access Denied、aeonretail=CAPTCHA）。
+ * これを成功と数えると「取得成功」なのに中身が拒否画面になるので、失敗に倒す。
+ */
+export function jinaBlockedReason(body) {
+  const head = String(body).slice(0, 1500);
+  const status = head.match(/^Warning: Target URL returned error (\d{3})/m);
+  if (status) return `相手が HTTP ${status[1]} を返した（jina 経由）`;
+  if (/^Warning: .*requiring CAPTCHA/m.test(head)) return '相手が CAPTCHA を出した（jina 経由）';
+  return null;
 }
 
 export const ROUTES = [

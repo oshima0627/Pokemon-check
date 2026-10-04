@@ -6,6 +6,7 @@ import {
   absolutize,
   decodeEntities,
   fetchPage,
+  jinaBlockedReason,
   filterLines,
   htmlToText,
   parseArgs,
@@ -141,4 +142,20 @@ test('fetchPage: 全滅したら経路ごとの理由を持って失敗する', 
       return true;
     },
   );
+});
+
+// 2026-10-04 実測: r.jina.ai は相手が 403 / CAPTCHA でも自分は 200 を返し、
+// 本文の先頭に Warning 行を付ける。これを成功と数えると「取得成功」なのに中身が拒否画面になる
+test('jinaBlockedReason: 相手の 403 を包んだ本文を見抜く', () => {
+  const body = 'Title: Access Denied\n\nURL Source: https://x/\n\nWarning: Target URL returned error 403: Forbidden\n\nMarkdown Content:\nYou don\'t have permission';
+  assert.equal(jinaBlockedReason(body), '相手が HTTP 403 を返した（jina 経由）');
+});
+
+test('jinaBlockedReason: CAPTCHA 画面を見抜く', () => {
+  const body = 'Title: Just a moment...\n\nWarning: This page maybe requiring CAPTCHA, please make sure you are authorized to access this page.\n\nMarkdown Content:';
+  assert.equal(jinaBlockedReason(body), '相手が CAPTCHA を出した（jina 経由）');
+});
+
+test('jinaBlockedReason: 普通の本文は null', () => {
+  assert.equal(jinaBlockedReason('Title: お知らせ\n\nMarkdown Content:\n抽選販売のお知らせ'), null);
 });
