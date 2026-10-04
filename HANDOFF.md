@@ -1,6 +1,6 @@
 # HANDOFF
 
-最終更新: 2026-10-04（ルーティン3「全国オンライン ポケカ抽選チェック」を新設。fetch-page の jina 誤判定を修正。テスト実行中）
+最終更新: 2026-10-04（ルーティン3「全国オンライン ポケカ抽選チェック」を新設しテスト実行で LINE 送信まで成功。fetch-page の jina 誤判定を修正）
 
 ## いま何をしているのか
 
@@ -64,8 +64,13 @@ DMMマイカ・イオンスタイルオンラインなど、**沖縄からでも
 - `node --test scripts/*.test.mjs` → **tests 48 / pass 48 / fail 0**（jina 判定のテスト3件を追加）
 - 修正後、手元から `aeonretail.com/Page/k-lottery_cardgame.aspx` → `# 取得失敗`（direct: HTTP 403 / jina: 相手が CAPTCHA を出した）、exit=1
 - 手元（日本）からは `limited.yodobashi.com/entry/shared/` が direct で 200（ポケモンカードの抽選ページ）。クラウドからは direct が `fetch failed`
-- テスト実行で確認できたこと（途中まで）: クラウドからも pokeca-navi（88件）・nyuka-now を WebFetch で取得できた。
-  edion-cp.com は WebFetch で本文取得（10/2 10:00〜10/4 23:59、沖縄店舗の明記なし）。aeonretail は 403/CAPTCHA
+- **ルーティン3のテスト実行（session `cse_018YYjQMpHdcifJm3mQYCvgC`）→ `result: success turns=18 duration=373s`、`LINE 通知を送信しました（Flex） ✅ LINE送信成功 (try 1)`**
+  - ポケカナビ: WebFetch で88件／入荷Now: WebFetch で取得
+  - 採用: A 配送4件（ヨドバシ・DMMマイカ・イオンスタイル・ポケカ公式）／B 店頭4件（ドンキ・エディオン・コジマ・ジョーシン）
+  - 不採用: X応募44・店舗単位36・POL 1・飲料キャンペーン2 → **採用基準どおりにふるい分けできた**
+  - 公式裏取り: 6件中2件読めた（edion-cp.com、pokemon-card.com）。読めなかった: ヨドバシ（WebFetch タイムアウト、fetch-page は jina 経由の403）、
+    DMMマイカ（JS描画で本文に詳細なし）、majica-net.com/app（汎用ページ）、aeonretail（403/CAPTCHA）
+  - status=warn、ボタン3つ（エディオン・DMMマイカ・ポケカナビ一覧）、新着なし（ベースライン8件と一致）
 - 手元（日本の回線）から: `pokeca-navi.jp/lotteries/` と `nyuka-now.com/archives/2459` は WebFetch で本文まで取れた
 - `pokemoncenter-online.com` は WebFetch（待合室へ302）でも fetch-page（direct 失敗→jina 経由で403「Restricted access」）でも取れない
 - `aeonretail.com/Page/k-entry_01.aspx` は WebFetch 403、fetch-page は jina 経由で 200 だがポケカ関連の行が無かった
@@ -73,18 +78,15 @@ DMMマイカ・イオンスタイルオンラインなど、**沖縄からでも
 
 ## 未検証のもの
 
-- **ルーティン3のテスト実行が最後まで通ったか（LINE 送信まで）は未確認**（このファイルを書いた時点で実行中）。
-  `RemoteTrigger get_run_log` に `cse_018YYjQMpHdcifJm3mQYCvgC` を渡して見る
-- まとめサイトがクラウドのサンドボックスから取れるか（手元では取れた）
-- 採用基準どおりにふるい分けられるか（X応募・店舗単位を誤って載せないか）
+- 3ボタン並びの実機での見え方（テスト実行は3つで送った。LINE で目視していない）
+- fetch-page 修正後（`4ba80e5`）にクラウドで jina 失敗が正しく `⚠` / 「まとめ情報」扱いになるか（次回定時実行で初めて効く）
 - ゲオの抽選で沖縄の店舗が選べるか（公式に記載なし）
 - イオン iAEON 抽選の一次情報（アプリ内のみ）
 - `jina` 経路がクラウドから通るか（クラウドでは direct が通るので未使用）
 
 ## 次にやること
 
-1. **テスト実行のログを見る**: `RemoteTrigger get_run_log`（session `cse_018YYjQMpHdcifJm3mQYCvgC`）。
-   採用件数・不採用の内訳・送信結果を確認し、ここの「未検証」を更新する
+1. LINE に届いた 10/4 16:11 JST のテストカードを目視する（ボタン3つの詰まり具合）
 2. **10/5 09:10 JST の定時実行を見る**（`RemoteTrigger list_runs` trigger `trig_01MNkY5QSzUkPEJM1QN4JPsf`）。
    ヨドバシ（10/5 11:00〜）が `⏰` 付きで載るはず
 3. ベースライン表（ルーティン3のプロンプト内）は 2026-10-04 時点。古くなったら `RemoteTrigger update` で書き換える
