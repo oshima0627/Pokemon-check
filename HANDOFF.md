@@ -1,6 +1,6 @@
 # HANDOFF
 
-最終更新: 2026-10-04（3本目のルーティン「全国オンライン ポケカ抽選チェック」を新設。テスト実行中）
+最終更新: 2026-10-04（ルーティン3「全国オンライン ポケカ抽選チェック」を新設。fetch-page の jina 誤判定を修正。テスト実行中）
 
 ## いま何をしているのか
 
@@ -52,16 +52,24 @@ DMMマイカ・イオンスタイルオンラインなど、**沖縄からでも
 - プロンプト内のカード例を `node scripts/notify-line.mjs --spec ex.json --dry` で検証 → `OK`
 - `RemoteTrigger run` で1回手動実行（session `cse_018YYjQMpHdcifJm3mQYCvgC`）。**LINE を1通消費する**
 - `CLAUDE.md` の「ルーティン2本」を「3本」に修正
+- **`scripts/fetch-page.mjs` のバグ修正**（commit `4ba80e5`）: r.jina.ai は相手が 403 / CAPTCHA でも自分は 200 を返し、
+  本文先頭に `Warning: Target URL returned error 403` / `Warning: This page maybe requiring CAPTCHA` を付ける。
+  これを「取得成功」と数えていたので、中身が拒否画面なのに成功扱いになっていた（テスト実行のログで発見:
+  ヨドバシ `limited.yodobashi.com`・aeonretail）。`jinaBlockedReason()` を追加して失敗に倒すようにした
 
 ## 検証済みの事実
 
 - ルーティン3の作成 → `CREATE_TRIGGER_OUTCOME_CREATED`、`next_run_at: 2026-10-05T00:10:00Z`
 - カード例の `--dry` 検証 → `OK`
+- `node --test scripts/*.test.mjs` → **tests 48 / pass 48 / fail 0**（jina 判定のテスト3件を追加）
+- 修正後、手元から `aeonretail.com/Page/k-lottery_cardgame.aspx` → `# 取得失敗`（direct: HTTP 403 / jina: 相手が CAPTCHA を出した）、exit=1
+- 手元（日本）からは `limited.yodobashi.com/entry/shared/` が direct で 200（ポケモンカードの抽選ページ）。クラウドからは direct が `fetch failed`
+- テスト実行で確認できたこと（途中まで）: クラウドからも pokeca-navi（88件）・nyuka-now を WebFetch で取得できた。
+  edion-cp.com は WebFetch で本文取得（10/2 10:00〜10/4 23:59、沖縄店舗の明記なし）。aeonretail は 403/CAPTCHA
 - 手元（日本の回線）から: `pokeca-navi.jp/lotteries/` と `nyuka-now.com/archives/2459` は WebFetch で本文まで取れた
 - `pokemoncenter-online.com` は WebFetch（待合室へ302）でも fetch-page（direct 失敗→jina 経由で403「Restricted access」）でも取れない
 - `aeonretail.com/Page/k-entry_01.aspx` は WebFetch 403、fetch-page は jina 経由で 200 だがポケカ関連の行が無かった
 - ゲオ `news/783`（30th カードセット）・`news/785`（再販）は fetch-page の direct で取得。どちらも応募は **9/28 11:00〜10/1 17:59 で締切済み**
-- テスト実行のログ冒頭: サンドボックス起動・リポジトリ取得・`date` 実行（`2026-10-04 16:05 Sun`）まで進んだのを確認
 
 ## 未検証のもの
 
